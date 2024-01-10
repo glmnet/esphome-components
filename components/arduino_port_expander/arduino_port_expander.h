@@ -6,6 +6,7 @@
 #include "esphome/core/defines.h"
 #ifdef USE_SENSOR
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/voltage_sampler/voltage_sampler.h"
 #endif
 
 namespace esphome {
@@ -76,7 +77,7 @@ class ArduinoPortExpanderGPIOPin : public GPIOPin {
 };
 
 #ifdef USE_SENSOR
-class ArduinoPortExpanderSensor : public PollingComponent, public sensor::Sensor {
+class ArduinoPortExpanderSensor : public PollingComponent, public sensor::Sensor, public voltage_sampler::VoltageSampler {
  public:
   void set_parent(ArduinoPortExpanderComponent *parent) { parent_ = parent; }
   /// Helper to get a pointer to the address as uint8_t.
@@ -84,6 +85,8 @@ class ArduinoPortExpanderSensor : public PollingComponent, public sensor::Sensor
   void set_pin(uint8_t pin) { pin_ = pin; };
 
   void update() override;
+
+  float sample() override;
 
  protected:
   uint8_t pin_;
