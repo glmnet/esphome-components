@@ -34,10 +34,15 @@ class ArduinoPortExpanderComponent : public Component, public i2c::I2CDevice {
   void pin_mode(uint8_t pin, gpio::Flags flags);
 
   float get_setup_priority() const override;
-  void set_analog_refernce(ArduinoPortExpanderAnalogReference analog_reference) {
-    analog_reference_ = analog_reference;
+  void set_analog_reference(ArduinoPortExpanderAnalogReference analog_reference) {
+    this->analog_reference_ = analog_reference;
+    this->reference_voltage_ = (analog_reference == ANALOG_REFERENCE_INTERNAL ? 1.1 : 5);
   }
   ArduinoPortExpanderAnalogReference get_analog_reference() { return analog_reference_; }
+  void set_reference_voltage(float reference_voltage) {
+    this->reference_voltage_ = reference_voltage;
+  }
+  float get_reference_voltage() { return reference_voltage_; }
 
   void dump_config() override;
 
@@ -51,6 +56,7 @@ class ArduinoPortExpanderComponent : public Component, public i2c::I2CDevice {
   uint8_t read_buffer_[3]{0, 0, 0};
   bool read_valid_{false};
   ArduinoPortExpanderAnalogReference analog_reference_;
+  float reference_voltage_;
 };
 
 /// Helper class to expose a ArduinoPortExpander pin as an internal input GPIO pin.
@@ -63,10 +69,10 @@ class ArduinoPortExpanderGPIOPin : public GPIOPin {
   void digital_write(bool value) override;
   std::string dump_summary() const override;
 
-  void set_parent(ArduinoPortExpanderComponent *parent) { parent_ = parent; }
-  void set_pin(uint8_t pin) { pin_ = pin; }
-  void set_inverted(bool inverted) { inverted_ = inverted; }
-  void set_flags(gpio::Flags flags) { flags_ = flags; }
+  void set_parent(ArduinoPortExpanderComponent *parent) { this->parent_ = parent; }
+  void set_pin(uint8_t pin) { this->pin_ = pin; }
+  void set_inverted(bool inverted) { this->inverted_ = inverted; }
+  void set_flags(gpio::Flags flags) { this->flags_ = flags; }
 
  protected:
   ArduinoPortExpanderComponent *parent_;
@@ -79,10 +85,10 @@ class ArduinoPortExpanderGPIOPin : public GPIOPin {
 #ifdef USE_SENSOR
 class ArduinoPortExpanderSensor : public PollingComponent, public sensor::Sensor, public voltage_sampler::VoltageSampler {
  public:
-  void set_parent(ArduinoPortExpanderComponent *parent) { parent_ = parent; }
-  /// Helper to get a pointer to the address as uint8_t.
+  void set_parent(ArduinoPortExpanderComponent *parent) { this->parent_ = parent; }
 
-  void set_pin(uint8_t pin) { pin_ = pin; };
+  void set_pin(uint8_t pin) { this->pin_ = pin; };
+  void set_raw(bool raw) { this->raw_ = raw; };
 
   void update() override;
 
@@ -90,6 +96,7 @@ class ArduinoPortExpanderSensor : public PollingComponent, public sensor::Sensor
 
  protected:
   uint8_t pin_;
+  bool raw_;
   ArduinoPortExpanderComponent *parent_;
 };
 

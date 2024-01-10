@@ -120,11 +120,10 @@ float ArduinoPortExpanderComponent::analog_read(uint8_t pin) {
 float ArduinoPortExpanderSensor::sample() {
   auto value = this->parent_->analog_read(this->pin_);
 
-  if (this->parent_->get_analog_reference() == ANALOG_REFERENCE_INTERNAL) {
-    // 1023 = 1.1v
-    value = value / 1023.0 * 1.1;
-  }
-  // else return raw value
+  if (this->raw_)
+    return value;
+
+  value = value / 1023.0 * this->parent_->get_reference_voltage();
   return value;
 }
 

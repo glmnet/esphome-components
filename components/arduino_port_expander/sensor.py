@@ -4,6 +4,7 @@ from esphome.components import sensor, voltage_sampler
 from esphome.const import (
     CONF_ID,
     CONF_PIN,
+    CONF_RAW,
     DEVICE_CLASS_VOLTAGE,
     STATE_CLASS_MEASUREMENT,
     UNIT_VOLT,
@@ -49,6 +50,7 @@ CONFIG_SCHEMA = cv.All(
                 ArduinoPortExpanderComponent
             ),
             cv.Required(CONF_PIN): cv.enum(ANALOG_PIN),
+            cv.Optional(CONF_RAW, default="false"): cv.boolean,
         }
     )
     .extend(cv.polling_component_schema("60s")),
@@ -63,4 +65,5 @@ async def to_code(config):
     await sensor.register_sensor(var, config)
 
     cg.add(var.set_pin(config[CONF_PIN]))
+    cg.add(var.set_raw(config[CONF_RAW]))
     cg.add(var.set_parent(hub))
