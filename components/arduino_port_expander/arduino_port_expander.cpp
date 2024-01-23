@@ -116,17 +116,21 @@ float ArduinoPortExpanderComponent::analog_read(uint8_t pin) {
   ESP_LOGV(TAG, "analog read pin: %d ok: %d value %d ", pin, ok, value);
   return value;
 }
-void ArduinoPortExpanderSensor::update() {
+
+float ArduinoPortExpanderSensor::sample() {
   auto value = this->parent_->analog_read(this->pin_);
 
-  if (this->parent_->get_analog_reference() == ANALOG_REFERENCE_INTERNAL) {
-    // 1023 = 1.1v
-    value = value / 1023.0 * 1.1;
-  }
-  // else return raw value
+  if (this->raw_)
+    return value;
 
-  this->publish_state(value);
+  value = value / 1023.0 * this->parent_->get_reference_voltage();
+  return value;
 }
+
+void ArduinoPortExpanderSensor::update() {
+  this->publish_state(this->sample());
+}
+
 #endif
 
 }  // namespace arduino_port_expander

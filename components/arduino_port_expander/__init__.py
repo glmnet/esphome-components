@@ -16,6 +16,7 @@ from esphome.const import (
 CONF_ARDUINO_PORT_EXPANDER = "arduino_port_expander"
 CONF_ARDUINO_PORT_EXPANDER_ID = "arduino_port_expander_id"
 CONF_ANALOG_REFERENCE = "analog_reference"
+CONF_REFERENCE_VOLTAGE = "reference_voltage"
 
 DEPENDENCIES = ["i2c"]
 MULTI_CONF = True
@@ -44,8 +45,9 @@ CONFIG_SCHEMA = (
         {
             cv.Required(CONF_ID): cv.declare_id(ArduinoPortExpanderComponent),
             cv.Optional(CONF_ANALOG_REFERENCE, default="INTERNAL"): cv.enum(
-                ANALOG_REFERENCE
+                ANALOG_REFERENCE, upper=True
             ),
+            cv.Optional(CONF_REFERENCE_VOLTAGE): cv.float_range(min=0, min_included=False),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -57,7 +59,9 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await i2c.register_i2c_device(var, config)
-    cg.add(var.set_analog_refernce(config[CONF_ANALOG_REFERENCE]))
+    cg.add(var.set_analog_reference(config[CONF_ANALOG_REFERENCE]))
+    if CONF_REFERENCE_VOLTAGE in config:
+        cg.add(var.set_reference_voltage(config[CONF_REFERENCE_VOLTAGE]))
 
 
 def validate_mode(value):
