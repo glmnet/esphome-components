@@ -109,29 +109,12 @@ std::string ArduinoPortExpanderGPIOPin::dump_summary() const {
   return buffer;
 }
 
-#ifdef USE_SENSOR
 float ArduinoPortExpanderComponent::analog_read(uint8_t pin) {
   uint16_t value;
   bool ok = (this->read_register(CMD_ANALOG_READ_A0 + pin, (uint8_t *) &value, 2));
   ESP_LOGV(TAG, "analog read pin: %d ok: %d value %d ", pin, ok, value);
   return value;
 }
-
-float ArduinoPortExpanderSensor::sample() {
-  auto value = this->parent_->analog_read(this->pin_);
-
-  if (this->raw_)
-    return value;
-
-  value = value / 1023.0 * this->parent_->get_reference_voltage();
-  return value;
-}
-
-void ArduinoPortExpanderSensor::update() {
-  this->publish_state(this->sample());
-}
-
-#endif
 
 }  // namespace arduino_port_expander
 }  // namespace esphome

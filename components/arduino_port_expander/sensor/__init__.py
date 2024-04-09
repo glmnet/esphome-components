@@ -10,7 +10,7 @@ from esphome.const import (
     UNIT_VOLT,
 )
 
-from . import (
+from .. import (
     CONF_ARDUINO_PORT_EXPANDER_ID,
     ArduinoPortExpanderComponent,
     arduino_port_expander_ns,

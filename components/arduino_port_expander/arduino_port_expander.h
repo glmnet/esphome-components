@@ -3,11 +3,6 @@
 #include "esphome/core/component.h"
 #include "esphome/core/hal.h"
 #include "esphome/components/i2c/i2c.h"
-#include "esphome/core/defines.h"
-#ifdef USE_SENSOR
-#include "esphome/components/sensor/sensor.h"
-#include "esphome/components/voltage_sampler/voltage_sampler.h"
-#endif
 
 namespace esphome {
 namespace arduino_port_expander {
@@ -39,9 +34,7 @@ class ArduinoPortExpanderComponent : public Component, public i2c::I2CDevice {
     this->reference_voltage_ = (analog_reference == ANALOG_REFERENCE_INTERNAL ? 1.1 : 5);
   }
   ArduinoPortExpanderAnalogReference get_analog_reference() { return analog_reference_; }
-  void set_reference_voltage(float reference_voltage) {
-    this->reference_voltage_ = reference_voltage;
-  }
+  void set_reference_voltage(float reference_voltage) { this->reference_voltage_ = reference_voltage; }
   float get_reference_voltage() { return reference_voltage_; }
 
   void dump_config() override;
@@ -81,26 +74,6 @@ class ArduinoPortExpanderGPIOPin : public GPIOPin {
   bool setup_;
   gpio::Flags flags_;
 };
-
-#ifdef USE_SENSOR
-class ArduinoPortExpanderSensor : public PollingComponent, public sensor::Sensor, public voltage_sampler::VoltageSampler {
- public:
-  void set_parent(ArduinoPortExpanderComponent *parent) { this->parent_ = parent; }
-
-  void set_pin(uint8_t pin) { this->pin_ = pin; };
-  void set_raw(bool raw) { this->raw_ = raw; };
-
-  void update() override;
-
-  float sample() override;
-
- protected:
-  uint8_t pin_;
-  bool raw_;
-  ArduinoPortExpanderComponent *parent_;
-};
-
-#endif
 
 }  // namespace arduino_port_expander
 }  // namespace esphome
