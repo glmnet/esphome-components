@@ -66,6 +66,7 @@ class ArduinoPortExpanderGPIOPin : public GPIOPin {
   void set_pin(uint8_t pin) { this->pin_ = pin; }
   void set_inverted(bool inverted) { this->inverted_ = inverted; }
   void set_flags(gpio::Flags flags) { this->flags_ = flags; }
+  gpio::Flags get_flags() const override { return this->flags_; }
 
  protected:
   ArduinoPortExpanderComponent *parent_;
