@@ -13,7 +13,7 @@ Ports:
 
 //#define DEBUG // remove debug so pin 0 and 1 can be used for IO
 
-#define I2C_ADDRESS 8
+#define I2C_ADDRESS 0x8
 
 void onRequest();
 void onReceive(int);
@@ -80,7 +80,7 @@ void readDigital()
 //DIGITAL_READ(2, A4, 4);
 //DIGITAL_READ(2, A5, 8);
 
-// DIGITAL READ not supports on A3 .. A7
+// DIGITAL READ not supported on A3 .. A7
 #ifdef DEBUG_READ
   Serial.print(F("Read 3 bytes: "));
   Serial.print(buffer[0]);
@@ -100,6 +100,32 @@ void readAnalog(int pin)
 #ifdef DEBUG_READ
   Serial.print(F("Read analog pin "));
   Serial.println(pin);
+#endif
+}
+
+void readSR04(uint8_t trigPin, uint8_t echoPin) {
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(100);
+  digitalWrite(trigPin, LOW);
+
+  long duration = pulseIn(echoPin, HIGH, 25000);  // 25ms timeout
+
+  len = 2;
+  buffer[0] = duration & 0xFF;
+  buffer[1] = (duration >> 8) & 0xFF;
+
+#ifdef DEBUG
+  Serial.print(F("SR04 on trigger pin: "));
+  Serial.print(trigPin);
+  Serial.print(F(", echoPin: "));
+  Serial.print(echoPin);
+  Serial.print(F(", duration: "));
+  Serial.println(duration);
 #endif
 }
 
@@ -126,6 +152,7 @@ void onRequest()
 
 #define CMD_SETUP_ANALOG_INTERNAL 0x10
 #define CMD_SETUP_ANALOG_DEFAULT 0x11
+#define CMD_SR04_READ 0x20
 
 void onReceive(int numBytes)
 {
@@ -189,7 +216,7 @@ void onReceive(int numBytes)
 #ifdef DEBUG
     Serial.print(F("Pin "));
     Serial.print(pin);
-    Serial.println(F("INPUT"));
+    Serial.println(F(" INPUT"));
 #endif
     break;
   case CMD_SETUP_PIN_INPUT_PULLUP:
@@ -197,7 +224,7 @@ void onReceive(int numBytes)
 #ifdef DEBUG
     Serial.print(F("Pin "));
     Serial.print(pin);
-    Serial.println(F("INPUT PULLUP"));
+    Serial.println(F(" INPUT PULLUP"));
 #endif
     break;
   case CMD_SETUP_ANALOG_INTERNAL:
@@ -212,5 +239,18 @@ void onReceive(int numBytes)
     Serial.println(F("Analog reference DEFAULT"));
 #endif
     break;
+    case CMD_SR04_READ: {
+      uint8_t echoPin = Wire.read();
+      readSR04(pin, echoPin);
+      break;
   }
+  default:
+#ifdef DEBUG
+    if (cmd != 0) {
+      Serial.print(F("Received unknown command: "));
+      Serial.println(cmd);
+    }
+#endif
+    break;  
+    }
 }
