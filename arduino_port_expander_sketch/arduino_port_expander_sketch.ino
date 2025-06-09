@@ -166,7 +166,7 @@ void onReceive(int numBytes)
   }
   case CMD_WRITE_ANALOG:
   {
-    int val = Wire.read() & (Wire.read() << 8);
+    int val = Wire.read() | (Wire.read() << 8);
     analogWrite(pin, val);
 #ifdef DEBUG
     Serial.print(F("Pin "));
