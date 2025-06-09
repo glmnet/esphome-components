@@ -20,8 +20,8 @@ Currently it is supported:
 > - writing digital outputs
 
 The Arduino sketch can be retrieved from
-[here](https://gist.github.com/glmnet/49ca3d6a9742fc3649f4fbdeaa4cdf5d#file-arduino_port_expander_sketch-ino)
-you can rename it to `.ino` and use the Arduino IDE to program it.
+[here](../arduino_port_expander_sketch/arduino_port_expander_sketch.ino)
+and you can use the Arduino IDE to program it.
 
 To setup the [external component](https://esphome.io/components/external_components) add the external component definition to your
 yaml:
