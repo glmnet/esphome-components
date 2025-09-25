@@ -58,7 +58,7 @@ bool ArduinoPortExpanderComponent::digital_read(uint8_t pin) {
   if (!this->read_valid_)
     this->read_valid_ = read_gpio_();
   uint8_t bit = pin % 8;
-  uint8_t value = pin < 8 ? this->read_buffer_[0] : pin < 16 ? this->read_buffer_[1] : pin < 24 ? this->read_buffer_[2] : pin < 32 ? this->read_buffer_[3] : pin < 40 ? this->read_buffer_[4] : pin < 48 ? this->read_buffer_[5] : pin < 56 ? this->read_buffer_[6] : pin < 64 ? this->read_buffer_[7] : this->read_buffer_[8];
+  uint8_t value = pin < 8 ? this->read_buffer_[0] : pin < 16 ? this->read_buffer_[1] : this->read_buffer_[2];
   return value & (1 << bit);
 }
 void ArduinoPortExpanderComponent::digital_write(uint8_t pin, bool value) {
