@@ -19,11 +19,10 @@ static const uint8_t CMD_WRITE_DIGITAL_LOW = 4;
 static const uint8_t CMD_SETUP_PIN_OUTPUT = 5;
 static const uint8_t CMD_SETUP_PIN_INPUT_PULLUP = 6;
 static const uint8_t CMD_SETUP_PIN_INPUT = 7;
-// 8 analog registers.. A0 to A7
-// A4 and A5 not supported due to I2C
-static const uint8_t CMD_ANALOG_READ_A0 = 0b1000;  // 0x8
-// ....
-static const uint8_t CMD_ANALOG_READ_A7 = 0b1111;  // 0xF
+
+// 16 analog registers.. A0 to A15 (Mega2560 soportado)
+static const uint8_t CMD_ANALOG_READ_A0  = 0x08;  // 0b1000
+static const uint8_t CMD_ANALOG_READ_A15 = 0x17;  // 0b10111
 
 static const uint8_t CMD_SETUP_ANALOG_INTERNAL = 0x10;
 static const uint8_t CMD_SETUP_ANALOG_DEFAULT = 0x11;
@@ -32,10 +31,10 @@ float ArduinoPortExpanderComponent::get_setup_priority() const { return setup_pr
 
 void ArduinoPortExpanderComponent::setup() {
   ESP_LOGCONFIG(TAG, "Setting up ArduinoPortExpander at %#02x ...", this->address_);
-  uint8_t data[3];
+  uint8_t data[7];  // 7 bytes = hasta 56 pines digitales
   uint32_t timeout = millis() + CONFIGURE_TIMEOUT_MS;
 
-  while (this->read_register(CMD_DIGITAL_READ, data, 3) != i2c::ERROR_OK) {
+  while (this->read_register(CMD_DIGITAL_READ, data, 7) != i2c::ERROR_OK) {
     App.feed_wdt();
     if (millis() > timeout) {
       ESP_LOGE(TAG, "ArduinoPortExpander not available at 0x%02X", this->address_);
@@ -46,7 +45,9 @@ void ArduinoPortExpanderComponent::setup() {
   this->write_register(this->analog_reference_, nullptr, 0);
   ESP_LOGCONFIG(TAG, "Successfully configured.");
 }
+
 void ArduinoPortExpanderComponent::loop() { this->read_valid_ = this->read_gpio_(); }
+
 void ArduinoPortExpanderComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "ArduinoPortExpander:");
   LOG_I2C_DEVICE(this)
@@ -54,19 +55,35 @@ void ArduinoPortExpanderComponent::dump_config() {
     ESP_LOGE(TAG, "Communication with ArduinoPortExpander failed!");
   }
 }
+
 bool ArduinoPortExpanderComponent::digital_read(uint8_t pin) {
+  if (pin > 53) {
+    ESP_LOGE(TAG, "Digital pin %d out of range (0–53)", pin);
+    return false;
+  }
   if (!this->read_valid_)
     this->read_valid_ = read_gpio_();
+  uint8_t byte_index = pin / 8;
   uint8_t bit = pin % 8;
-  uint8_t value = pin < 8 ? this->read_buffer_[0] : pin < 16 ? this->read_buffer_[1] : this->read_buffer_[2];
+  uint8_t value = this->read_buffer_[byte_index];
   return value & (1 << bit);
 }
+
 void ArduinoPortExpanderComponent::digital_write(uint8_t pin, bool value) {
   if (this->is_failed())
     return;
+  if (pin > 53) {
+    ESP_LOGE(TAG, "Digital write out of range pin %d", pin);
+    return;
+  }
   this->write_register(value ? CMD_WRITE_DIGITAL_HIGH : CMD_WRITE_DIGITAL_LOW, &pin, 1);
 }
+
 void ArduinoPortExpanderComponent::pin_mode(uint8_t pin, gpio::Flags flags) {
+  if (pin > 53) {
+    ESP_LOGE(TAG, "Pin mode out of range pin %d", pin);
+    return;
+  }
   ESP_LOGD(TAG, "Setting pin %d mode %d", pin, flags);
   if (flags == gpio::FLAG_INPUT) {
     this->write_register(CMD_SETUP_PIN_INPUT, &pin, 1);
@@ -79,11 +96,11 @@ void ArduinoPortExpanderComponent::pin_mode(uint8_t pin, gpio::Flags flags) {
   }
   this->read_valid_ = false;
 }
+
 bool ArduinoPortExpanderComponent::read_gpio_() {
   bool success;
-  uint8_t data[2];
-
-  success = (this->read_register(CMD_DIGITAL_READ, this->read_buffer_, 3) == i2c::ERROR_OK);
+  // Leer los 7 bytes que cubren los 54 pines del Mega
+  success = (this->read_register(CMD_DIGITAL_READ, this->read_buffer_, 7) == i2c::ERROR_OK);
 
   if (!success) {
     this->status_set_warning();
@@ -110,11 +127,10 @@ std::string ArduinoPortExpanderGPIOPin::dump_summary() const {
 }
 
 float ArduinoPortExpanderComponent::analog_read(uint8_t pin) {
+  if (pin > 15) {  // Mega2560 solo hasta A15
+    ESP_LOGE(TAG, "Analog pin %d out of range (0–15)", pin);
+    return 0;
+  }
   uint16_t value;
   bool ok = (this->read_register(CMD_ANALOG_READ_A0 + pin, (uint8_t *) &value, 2));
-  ESP_LOGV(TAG, "analog read pin: %d ok: %d value %d ", pin, ok, value);
-  return value;
-}
-
-}  // namespace arduino_port_expander
-}  // namespace esphome
+  ESP_LOGV(TA_
