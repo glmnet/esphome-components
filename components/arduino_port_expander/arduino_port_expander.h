@@ -1,332 +1,120 @@
-// Must disable logging if using logging in main.cpp or in other custom components for the
-//  __c causes a section type conflict with __c thingy
-// you can enable logging and use it if you enable this in logger:
-/*
-logger:
-  level: DEBUG
-  esp8266_store_log_strings_in_flash: False
-  */
+#include "arduino_port_expander.h"
+#include "esphome/core/application.h"
+#include "esphome/core/log.h"
 
-//#define APE_LOGGING
+namespace esphome {
+namespace arduino_port_expander {
 
-// take advantage of LOG_ defines to decide which code to include
-#ifdef LOG_BINARY_OUTPUT
-#define APE_BINARY_OUTPUT
-#endif
-#ifdef LOG_BINARY_SENSOR
-#define APE_BINARY_SENSOR
-#endif
-#ifdef LOG_SENSOR
-#define APE_SENSOR
-#endif
+static const char *const TAG = "arduino_port_expander";
 
-static const char *TAGape = "ape";
+static const uint32_t CONFIGURE_TIMEOUT_MS = 5000;
 
-#define APE_CMD_DIGITAL_READ 0
-#define APE_CMD_WRITE_ANALOG 2
-#define APE_CMD_WRITE_DIGITAL_HIGH 3
-#define APE_CMD_WRITE_DIGITAL_LOW 4
-#define APE_CMD_SETUP_PIN_OUTPUT 5
-#define APE_CMD_SETUP_PIN_INPUT_PULLUP 6
-#define APE_CMD_SETUP_PIN_INPUT 7
-// 16 analog registers.. A0 to A15
-// A4 and A5 on Arduino Uno not supported due to I2C
-#define CMD_ANALOG_READ_A0 0b1000 // 0x8 = A0
+static const uint8_t DIRECT_COMMAND = 0x96;
+static const uint8_t ANTFREQ = 3;
+
+static const uint8_t CMD_DIGITAL_READ = 0;
+static const uint8_t CMD_WRITE_ANALOG = 2;
+static const uint8_t CMD_WRITE_DIGITAL_HIGH = 3;
+static const uint8_t CMD_WRITE_DIGITAL_LOW = 4;
+static const uint8_t CMD_SETUP_PIN_OUTPUT = 5;
+static const uint8_t CMD_SETUP_PIN_INPUT_PULLUP = 6;
+static const uint8_t CMD_SETUP_PIN_INPUT = 7;
+// 8 analog registers.. A0 to A7
+// A4 and A5 not supported due to I2C
+static const uint8_t CMD_ANALOG_READ_A0 = 0b1000;  // 0x8
 // ....
-#define CMD_ANALOG_READ_A15 10111 // 17 = A15
+static const uint8_t CMD_ANALOG_READ_A7 = 0b1111;  // 0xF
 
-#define CMD_SETUP_ANALOG_INTERNAL 0x10
-#define CMD_SETUP_ANALOG_DEFAULT 0x11
+static const uint8_t CMD_SETUP_ANALOG_INTERNAL = 0x10;
+static const uint8_t CMD_SETUP_ANALOG_DEFAULT = 0x11;
 
-#define get_ape(constructor) static_cast<ArduinoPortExpander *>(constructor.get_component(0))
+float ArduinoPortExpanderComponent::get_setup_priority() const { return setup_priority::IO; }
 
-#define ape_binary_output(ape, pin) get_ape(ape)->get_binary_output(pin)
-#define ape_binary_sensor(ape, pin) get_ape(ape)->get_binary_sensor(pin)
-#define ape_analog_input(ape, pin) get_ape(ape)->get_analog_input(pin)
+void ArduinoPortExpanderComponent::setup() {
+  ESP_LOGCONFIG(TAG, "Setting up ArduinoPortExpander at %#02x ...", this->address_);
+  uint8_t data[3];
+  uint32_t timeout = millis() + CONFIGURE_TIMEOUT_MS;
 
-class ArduinoPortExpander;
-
-using namespace esphome;
-
-#ifdef APE_BINARY_OUTPUT
-class ApeBinaryOutput : public output::BinaryOutput
-{
-public:
-  ApeBinaryOutput(ArduinoPortExpander *parent, uint8_t pin)
-  {
-    this->parent_ = parent;
-    this->pin_ = pin;
-  }
-  void write_state(bool state) override;
-  uint8_t get_pin() { return this->pin_; }
-
-protected:
-  ArduinoPortExpander *parent_;
-  uint8_t pin_;
-  // Pins are setup as output after the state is written, Arduino has no open drain outputs, after setting an output it will either sink or source thus activating outputs writen to false during a flick.
-  bool setup_{true};
-  bool state_{false};
-
-  friend class ArduinoPortExpander;
-};
-#endif
-
-#ifdef APE_BINARY_SENSOR
-class ApeBinarySensor : public binary_sensor::BinarySensor
-{
-public:
-  ApeBinarySensor(ArduinoPortExpander *parent, uint8_t pin)
-  {
-    this->pin_ = pin;
-  }
-  uint8_t get_pin() { return this->pin_; }
-
-protected:
-  uint8_t pin_;
-};
-#endif
-
-#ifdef APE_SENSOR
-class ApeAnalogInput : public sensor::Sensor
-{
-public:
-  ApeAnalogInput(ArduinoPortExpander *parent, uint8_t pin)
-  {
-    this->pin_ = pin;
-  }
-  uint8_t get_pin() { return this->pin_; }
-
-protected:
-  uint8_t pin_;
-};
-#endif
-
-class ArduinoPortExpander : public Component, public I2CDevice
-{
-public:
-  ArduinoPortExpander(I2CBus *bus, uint8_t address, bool vref_default = false)
-  {
-    set_i2c_address(address);
-    set_i2c_bus(bus);
-    this->vref_default_ = vref_default;
-  }
-  void setup() override
-  {
-#ifdef APE_LOGGING
-    ESP_LOGCONFIG(TAGape, "Setting up ArduinoPortExpander at %#02x ...", address_);
-#endif
-
-    /* We cannot setup as usual as arduino boots later than esp8266
-
-            Poll i2c bus for our Arduino for a n seconds instead of failing fast,
-            also this is important as pin setup (INPUT_PULLUP, OUTPUT it's done once)
-        */
-    this->configure_timeout_ = millis() + 5000;
-  }
-  void loop() override
-  {
-    if (millis() < this->configure_timeout_)
-    {
-      bool try_configure = millis() % 100 > 50;
-      if (try_configure == this->configure_)
-        return;
-      this->configure_ = try_configure;
-
-      if (ERROR_OK == this->read_register(APE_CMD_DIGITAL_READ, const_cast<uint8_t *>(this->read_buffer_), 9)) //changed 3 to 9
-      {
-#ifdef APE_LOGGING
-        ESP_LOGCONFIG(TAGape, "ArduinoPortExpander found at %#02x", address_);
-#endif
-        delay(10);
-        if (this->vref_default_)
-        {
-          this->write_register(CMD_SETUP_ANALOG_DEFAULT, nullptr, 0); // 0: unused
-        }
-
-        // Config success
-        this->configure_timeout_ = 0;
-        this->status_clear_error();
-#ifdef APE_BINARY_SENSOR
-        for (ApeBinarySensor *pin : this->input_pins_)
-        {
-          App.feed_wdt();
-          uint8_t pinNo = pin->get_pin();
-#ifdef APE_LOGGING
-          ESP_LOGCONFIG(TAGape, "Setup input pin %d", pinNo);
-#endif
-          this->write_register(APE_CMD_SETUP_PIN_INPUT_PULLUP, &pinNo, 1);
-          delay(20);
-        }
-#endif
-#ifdef APE_BINARY_OUTPUT
-        for (ApeBinaryOutput *output : this->output_pins_)
-        {
-          if (!output->setup_)
-          { // this output has a valid value already
-            this->write_state(output->pin_, output->state_, true);
-            App.feed_wdt();
-            delay(20);
-          }
-        }
-#endif
-#ifdef APE_SENSOR
-        for (ApeAnalogInput *sensor : this->analog_pins_)
-        {
-          App.feed_wdt();
-          uint8_t pinNo = sensor->get_pin();
-#ifdef APE_LOGGING
-          ESP_LOGCONFIG(TAGape, "Setup analog input pin %d", pinNo);
-#endif
-          this->write_register(APE_CMD_SETUP_PIN_INPUT, &pinNo, 1);
-          delay(20);
-        }
-#endif
-        return;
-      }
-      // Still not answering
-      return;
-    }
-    if (this->configure_timeout_ != 0 && millis() > this->configure_timeout_)
-    {
-#ifdef APE_LOGGING
-      ESP_LOGE(TAGape, "ArduinoPortExpander NOT found at %#02x", address_);
-#endif
+  while (this->read_register(CMD_DIGITAL_READ, data, 3) != i2c::ERROR_OK) {
+    App.feed_wdt();
+    if (millis() > timeout) {
+      ESP_LOGE(TAG, "ArduinoPortExpander not available at 0x%02X", this->address_);
       this->mark_failed();
       return;
     }
-
-#ifdef APE_BINARY_SENSOR
-    if (ERROR_OK != this->read_register(APE_CMD_DIGITAL_READ, const_cast<uint8_t *>(this->read_buffer_), 9)) //Changed this from 3 to 9
-    {
-#ifdef APE_LOGGING
-      ESP_LOGE(TAGape, "Error reading. Reconfiguring pending.");
-#endif
-      this->status_set_error();
-      this->configure_timeout_ = millis() + 5000;
-      return;
-    }
-    for (ApeBinarySensor *pin : this->input_pins_)
-    {
-      uint8_t pinNo = pin->get_pin();
-
-      uint8_t bit = pinNo % 8;
-
-      uint8_t value = 0;
-      if(pinNo < 8){
-        value = this->read_buffer_[0];
-      }else if(pinNo < 16){
-        value = this->read_buffer_[1];
-      }else if(pinNo < 24){
-        value = this->read_buffer_[2];
-      }else if(pinNo < 32){
-        value = this->read_buffer_[3];
-      }else if(pinNo < 40){
-        value = this->read_buffer_[4];
-      }else if(pinNo < 48){
-        value = this->read_buffer_[5];
-      }else if(pinNo < 56){
-        value = this->read_buffer_[6];
-      }else if(pinNo < 64){
-        value = this->read_buffer_[7];
-      }else{
-        value = this->read_buffer_[8];
-      }
-      
-      bool ret = value & (1 << bit);
-      if (this->initial_state_)
-        pin->publish_initial_state(ret);
-      else
-        pin->publish_state(ret);
-    }
-#endif
-#ifdef APE_SENSOR
-    for (ApeAnalogInput *pin : this->analog_pins_)
-    {
-      uint8_t pinNo = pin->get_pin();
-      pin->publish_state(analogRead(pinNo));
-    }
-#endif
-    this->initial_state_ = false;
-  }
-
-#ifdef APE_SENSOR
-  uint16_t analogRead(uint8_t pin)
-  {
-    bool ok = (ERROR_OK == this->read_register((uint8_t)(CMD_ANALOG_READ_A0 + pin), const_cast<uint8_t *>(this->read_buffer_), 2));
-#ifdef APE_LOGGING
-    ESP_LOGVV(TAGape, "analog read pin: %d ok: %d byte0: %d byte1: %d", pin, ok, this->read_buffer_[0], this->read_buffer_[1]);
-#endif
-    uint16_t value = this->read_buffer_[0] | ((uint16_t)this->read_buffer_[1] << 8);
-    return value;
-  }
-#endif
-
-#ifdef APE_BINARY_OUTPUT
-  output::BinaryOutput *get_binary_output(uint8_t pin)
-  {
-    ApeBinaryOutput *output = new ApeBinaryOutput(this, pin);
-    output_pins_.push_back(output);
-    return output;
-  }
-#endif
-#ifdef APE_BINARY_SENSOR
-  binary_sensor::BinarySensor *get_binary_sensor(uint8_t pin)
-  {
-    ApeBinarySensor *binarySensor = new ApeBinarySensor(this, pin);
-    input_pins_.push_back(binarySensor);
-    return binarySensor;
-  }
-#endif
-#ifdef APE_SENSOR
-  sensor::Sensor *get_analog_input(uint8_t pin)
-  {
-    ApeAnalogInput *input = new ApeAnalogInput(this, pin);
-    analog_pins_.push_back(input);
-    return input;
-  }
-#endif
-  void write_state(uint8_t pin, bool state, bool setup = false)
-  {
-    if (this->configure_timeout_ != 0)
-      return;
-#ifdef APE_LOGGING
-    ESP_LOGD(TAGape, "Writing %d to pin %d", state, pin);
-#endif
-    this->write_register(state ? APE_CMD_WRITE_DIGITAL_HIGH : APE_CMD_WRITE_DIGITAL_LOW, &pin, 1);
-    if (setup)
-    {
-      App.feed_wdt();
-      delay(20);
-#ifdef APE_LOGGING
-      ESP_LOGI(TAGape, "Setup output pin %d", pin);
-#endif
-      this->write_register(APE_CMD_SETUP_PIN_OUTPUT, &pin, 1);
-    }
-  }
-
-protected:
-  bool configure_{true};
-  bool initial_state_{true};
-  uint8_t read_buffer_[9]{0, 0, 0, 0, 0, 0, 0, 0, 0}; //changed from [3]{0, 0, 0}
-  unsigned long configure_timeout_{5000};
-  bool vref_default_{false};
-
-#ifdef APE_BINARY_OUTPUT
-  std::vector<ApeBinaryOutput *> output_pins_;
-#endif
-#ifdef APE_BINARY_SENSOR
-  std::vector<ApeBinarySensor *> input_pins_;
-#endif
-#ifdef APE_SENSOR
-  std::vector<ApeAnalogInput *> analog_pins_;
-#endif
-};
-
-#ifdef APE_BINARY_OUTPUT
-void ApeBinaryOutput::write_state(bool state)
-{
-  this->state_ = state;
-  this->parent_->write_state(this->pin_, state, this->setup_);
-  this->setup_ = false;
+  };
+  this->write_register(this->analog_reference_, nullptr, 0);
+  ESP_LOGCONFIG(TAG, "Successfully configured.");
 }
-#endif
+void ArduinoPortExpanderComponent::loop() { this->read_valid_ = this->read_gpio_(); }
+void ArduinoPortExpanderComponent::dump_config() {
+  ESP_LOGCONFIG(TAG, "ArduinoPortExpander:");
+  LOG_I2C_DEVICE(this)
+  if (this->is_failed()) {
+    ESP_LOGE(TAG, "Communication with ArduinoPortExpander failed!");
+  }
+}
+bool ArduinoPortExpanderComponent::digital_read(uint8_t pin) {
+  if (!this->read_valid_)
+    this->read_valid_ = read_gpio_();
+  uint8_t bit = pin % 8;
+  uint8_t value = pin < 8 ? this->read_buffer_[0] : pin < 16 ? this->read_buffer_[1] : this->read_buffer_[2];
+  return value & (1 << bit);
+}
+void ArduinoPortExpanderComponent::digital_write(uint8_t pin, bool value) {
+  if (this->is_failed())
+    return;
+  this->write_register(value ? CMD_WRITE_DIGITAL_HIGH : CMD_WRITE_DIGITAL_LOW, &pin, 1);
+}
+void ArduinoPortExpanderComponent::pin_mode(uint8_t pin, gpio::Flags flags) {
+  ESP_LOGD(TAG, "Setting pin %d mode %d", pin, flags);
+  if (flags == gpio::FLAG_INPUT) {
+    this->write_register(CMD_SETUP_PIN_INPUT, &pin, 1);
+  } else if (flags == (gpio::FLAG_INPUT | gpio::FLAG_PULLUP)) {
+    this->write_register(CMD_SETUP_PIN_INPUT_PULLUP, &pin, 1);
+  } else if (flags == gpio::FLAG_OUTPUT) {
+    this->write_register(CMD_SETUP_PIN_OUTPUT, &pin, 1);
+  } else {
+    ESP_LOGE(TAG, "Invalid pin mode for pin %d", pin);
+  }
+  this->read_valid_ = false;
+}
+bool ArduinoPortExpanderComponent::read_gpio_() {
+  bool success;
+  uint8_t data[2];
+
+  success = (this->read_register(CMD_DIGITAL_READ, this->read_buffer_, 3) == i2c::ERROR_OK);
+
+  if (!success) {
+    this->status_set_warning();
+    return false;
+  }
+  this->status_clear_warning();
+  return true;
+}
+
+void ArduinoPortExpanderGPIOPin::setup() {
+  pin_mode(flags_);
+  this->setup_ = true;
+}
+void ArduinoPortExpanderGPIOPin::pin_mode(gpio::Flags flags) { this->parent_->pin_mode(this->pin_, flags); }
+bool ArduinoPortExpanderGPIOPin::digital_read() { return this->parent_->digital_read(this->pin_) != this->inverted_; }
+void ArduinoPortExpanderGPIOPin::digital_write(bool value) {
+  if (this->setup_)
+    this->parent_->digital_write(this->pin_, value != this->inverted_);
+}
+std::string ArduinoPortExpanderGPIOPin::dump_summary() const {
+  char buffer[32];
+  snprintf(buffer, sizeof(buffer), "%u via ArduinoPortExpander", pin_);
+  return buffer;
+}
+
+float ArduinoPortExpanderComponent::analog_read(uint8_t pin) {
+  uint16_t value;
+  bool ok = (this->read_register(CMD_ANALOG_READ_A0 + pin, (uint8_t *) &value, 2));
+  ESP_LOGV(TAG, "analog read pin: %d ok: %d value %d ", pin, ok, value);
+  return value;
+}
+
+}  // namespace arduino_port_expander
+}  // namespace esphome
