@@ -60,7 +60,7 @@ class ArduinoPortExpanderGPIOPin : public GPIOPin {
 
   bool digital_read() override;
   void digital_write(bool value) override;
-  std::string dump_summary() const override;
+  size_t dump_summary(char *buffer, size_t len) const override;
 
   void set_parent(ArduinoPortExpanderComponent *parent) { this->parent_ = parent; }
   void set_pin(uint8_t pin) { this->pin_ = pin; }

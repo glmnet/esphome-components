@@ -103,10 +103,8 @@ void ArduinoPortExpanderGPIOPin::digital_write(bool value) {
   if (this->setup_)
     this->parent_->digital_write(this->pin_, value != this->inverted_);
 }
-std::string ArduinoPortExpanderGPIOPin::dump_summary() const {
-  char buffer[32];
-  snprintf(buffer, sizeof(buffer), "%u via ArduinoPortExpander", pin_);
-  return buffer;
+size_t ArduinoPortExpanderGPIOPin::dump_summary(char *buffer, size_t len) const {
+  return snprintf(buffer, len, "%u via ArduinoPortExpander", pin_);
 }
 
 float ArduinoPortExpanderComponent::analog_read(uint8_t pin) {
